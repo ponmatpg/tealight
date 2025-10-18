@@ -1,0 +1,5 @@
+py_test(
+    name = "test_example",
+    srcs = ["test_example.py"],
+    deps=["//src:example_py"],
+)

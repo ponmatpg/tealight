@@ -1,0 +1,1 @@
+bazel_dep(name = "nanobind_bazel", version = "2.9.2") # Use the latest version

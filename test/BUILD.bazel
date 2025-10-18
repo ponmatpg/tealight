@@ -3,3 +3,8 @@ py_test(
     srcs = ["test_example.py"],
     deps=["//src:example_py"],
 )
+py_test(
+    name = "test_value",
+    srcs = ["test_value.py"],
+    deps=["//src:value_py"],
+)

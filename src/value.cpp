@@ -304,6 +304,8 @@ NB_MODULE(libvalue, m) {
           nb::rv_policy::reference)
       .def("grad", &ValueType::grad)
       .def("describe", &ValueType::describe)
+      .def("__str__", &ValueType::describe)
+      .def("__repr__", &ValueType::describe)
       .def("backward", &ValueType::backward);
 
   nb::class_<NeuronType>(m, "Neuron")

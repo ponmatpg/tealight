@@ -9,6 +9,7 @@
 #include <ranges>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -35,8 +36,10 @@ public:
   // mathematical operators
   Value &operator+(Value &other) {
     Value *out = new Value(this->value_ + other.value_, {this, &other});
-
+    std::cout << "operator+ creating node " << out << " from " << this << " "
+              << &other << std::endl;
     out->backward_ = [this, &other, out]() {
+      std::cout << "updating sum gradient on " << out << std::endl;
       this->grad_ += out->grad_;
       other.grad_ += out->grad_;
     };
@@ -57,8 +60,11 @@ public:
 
   Value &operator*(Value &other) {
     Value *out = new Value(this->value_ * other.value_, {this, &other});
+    std::cout << "operator* creating node " << out << " from " << this << " "
+              << &other << std::endl;
 
     out->backward_ = [this, &other, out]() {
+      std::cout << "updating product gradient on " << out << std::endl;
       this->grad_ += out->grad_ * other.value_;
       other.grad_ += out->grad_ * this->value_;
     };
@@ -116,6 +122,12 @@ public:
     };
     build_topo(this);
 
+    std::cout << "topo_sorted: ";
+    for (auto v : std::views::reverse(topo_sorted)) {
+      std::cout << v << " ";
+    }
+    std::cout << std::endl;
+
     grad_ = 1;
     for (auto v : std::views::reverse(topo_sorted)) {
       v->backward_();
@@ -167,15 +179,23 @@ public:
   }
 
   Value<FpType> &operator()(std::vector<Value<FpType> *> x) {
-    Value<FpType> &sum_ = *bias_;
-    for (int i = 0; i < x.size(); ++i) {
-      sum_ = sum_ + (*weights_[i]) * (*x[i]);
+    if (x.size() != input_size_) {
+      std::stringstream ss;
+      ss << "input size mismatch x.size()=" << x.size()
+         << " input_size_=" << input_size_;
+      throw std::runtime_error(ss.str());
     }
 
+    Value<FpType> *sum_ = new Value<FpType>(0);
+    for (int i = 0; i < x.size(); ++i) {
+      sum_ = &(*sum_ + (*weights_[i]) * (*x[i]));
+    }
+    sum_ = &(*sum_ + *bias_);
+
     if (has_activation_) {
-      return sum_.relu();
+      return sum_->relu();
     } else {
-      return sum_;
+      return *sum_;
     }
   }
 

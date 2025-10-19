@@ -1,20 +1,6 @@
 load("@nanobind_bazel//:build_defs.bzl", "nanobind_extension")
 
 cc_binary(
-    name="libexample.so",
-    srcs=["example.cpp"],
-    linkshared=True,
-    deps=["@nanobind_bazel//:nanobind"],
-)
-
-py_library(
-    name="example_py",
-    data=[":libexample.so"],
-    imports=["."],
-    visibility=["//visibility:public"],
-)
-
-cc_binary(
     name="libvalue.so",
     srcs=["value.cpp"],
     linkshared=True,

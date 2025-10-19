@@ -1,8 +1,8 @@
 from src.libvalue import Value
 
 def test_basic():
-    x = Value(10)
-    y = Value(5.0)
+    x = Value(2)
+    y = Value(3)
     z = x + y * y + x * y + x ** y
     z.backward()
     print(f"{z.describe()}")

@@ -13,13 +13,15 @@
 
 namespace nb = nanobind;
 
-template <typename T = double> class Value {
+template <typename FpType = double> class Value {
 public:
-  Value(T val, std::vector<Value<T> *> children = {})
+  Value(FpType val, std::vector<Value<FpType> *> children = {})
       : value_(val), children_(children) {}
   Value(Value &other) = delete;
 
-  T grad() const { return grad_; }
+  FpType grad() const { return grad_; }
+
+  void zero_grad() { grad_ = 0; }
 
   std::string describe() const {
     std::stringstream ss;
@@ -41,7 +43,7 @@ public:
   }
 
   Value &operator-(Value &other) {
-    Value *out = new Value(this->value_ + other.value_, {this, &other});
+    Value *out = new Value(this->value_ - other.value_, {this, &other});
 
     out->backward_ = [this, &other, out]() {
       this->grad_ += out->grad_;
@@ -52,7 +54,7 @@ public:
   }
 
   Value &operator*(Value &other) {
-    Value *out = new Value(this->value_ + other.value_, {this, &other});
+    Value *out = new Value(this->value_ * other.value_, {this, &other});
 
     out->backward_ = [this, &other, out]() {
       this->grad_ += out->grad_ * other.value_;
@@ -63,7 +65,7 @@ public:
   }
 
   Value &operator/(Value &other) {
-    Value *out = new Value(this->value_ + other.value_, {this, &other});
+    Value *out = new Value(this->value_ / other.value_, {this, &other});
 
     out->backward_ = [this, &other, out]() {
       this->grad_ += out->grad_ / other.value_;
@@ -76,7 +78,8 @@ public:
 
   // represents this ^ other
   Value &pow(Value &other) {
-    Value *out = new Value(this->value_ + other.value_, {this, &other});
+    Value *out =
+        new Value(std::pow(this->value_, other.value_), {this, &other});
 
     out->backward_ = [this, &other, out]() {
       this->grad_ += out->grad_ * out->value_ * other.value_ / this->value_;
@@ -86,11 +89,21 @@ public:
     return *out;
   }
 
+  Value &relu() {
+    Value *out = new Value(value_ > 0 ? value_ : 0, {this});
+
+    out->backward_ = [this, out]() {
+      this->grad_ += out->grad_ * (this->value_ > 0 ? 1 : 0);
+    };
+
+    return *out;
+  }
+
   void backward() {
-    std::vector<Value<T> *> topo_sorted{};
-    std::unordered_set<Value<T> *> visited{};
+    std::vector<Value<FpType> *> topo_sorted{};
+    std::unordered_set<Value<FpType> *> visited{};
     auto build_topo = [&visited, &topo_sorted](this auto &&self,
-                                               Value<T> *v) -> void {
+                                               Value<FpType> *v) -> void {
       if (auto it = visited.find(v); it == visited.end()) {
         visited.insert(v);
         for (auto p : v->children_) {
@@ -108,10 +121,10 @@ public:
   }
 
 private:
-  T value_;
-  T grad_{0};
+  FpType value_;
+  FpType grad_{0};
   std::function<void(void)> backward_ = []() {};
-  std::vector<Value<T> *> children_;
+  std::vector<Value<FpType> *> children_;
 };
 
 NB_MODULE(libvalue, m) {
@@ -156,3 +169,30 @@ NB_MODULE(libvalue, m) {
       .def("describe", &ValueType::describe)
       .def("backward", &ValueType::backward);
 }
+
+template <typename FpType = double> class Module {
+public:
+  Module() = default;
+  Module(Module<FpType> &other) = delete;
+
+  void zero_grad() {
+    for (auto &p : parameters_) {
+      p.zero_grad();
+    }
+  }
+
+private:
+  std::vector<Value<FpType>> parameters_;
+}; // class Module
+
+/*
+template <typename FpType = double> class Neuron : public Module<FpType> {
+public:
+  Neuron(std::size_t input_size) : Module<FpType>() {};
+  Neuron(Neuron<FpType> &other) = delete;
+
+private:
+  std::vector<Value<FpType>> weights_;
+  Value<FpType> bias;
+}; // class Neuron
+*/

@@ -188,7 +188,7 @@ public:
 
 template <typename FpType = double> class Neuron : public Module<FpType> {
 public:
-  Neuron(std::size_t input_size, bool has_activation)
+  Neuron(std::size_t input_size, bool has_activation = false)
       : Module<FpType>(), input_size_(input_size),
         has_activation_(has_activation) {
     for (int i = 0; i < input_size_; ++i) {
@@ -222,7 +222,78 @@ public:
 
 private:
   std::size_t input_size_;
-  bool has_activation_{false};
+  bool has_activation_;
   std::vector<Value<FpType>> weights_;
   Value<FpType> bias_;
 }; // class Neuron
+
+template <typename FpType = double> class Layer : public Module<FpType> {
+public:
+  Layer(std::size_t input_size, std::size_t output_size)
+      : Module<FpType>(), input_size_(input_size), output_size_(output_size) {
+    for (int i = 0; i < output_size; ++i) {
+      neurons_.emplace_back(input_size);
+    }
+  };
+  Layer(Layer<FpType> &other) = delete;
+
+  std::vector<Value<FpType> &> parameters() override {
+    std::vector<Value<FpType> &> params;
+    for (auto &n : neurons_) {
+      for (auto &p : n.parameters()) {
+        params.emplace_back(p);
+      }
+    }
+    return params;
+  }
+
+  std::vector<Value<FpType> &> operator()(std::vector<Value<FpType> &> x) {
+    std::vector<Value<FpType> &> out;
+    for (auto &n : neurons_) {
+      out.emplace_back(n(x));
+    }
+  }
+
+private:
+  std::size_t input_size_;
+  std::size_t output_size_;
+  std::vector<Neuron<FpType>> neurons_;
+}; // class Layer
+
+template <typename FpType = double> class MLP : public Module<FpType> {
+public:
+  MLP(std::size_t input_size, std::vector<std::size_t> output_sizes)
+      : Module<FpType>() {
+    sizes_.push_back(input_size);
+    for (auto sz : output_sizes) {
+      sizes_.push_back(sz);
+    }
+
+    for (int i = 0; i < sizes_.size() - 1; ++i) {
+      bool has_activation = (i + 1) == sizes_.size() - 1;
+      layers_.emplace_back(sizes_[i], sizes_[i + 1], has_activation);
+    }
+  };
+  MLP(Layer<FpType> &other) = delete;
+
+  std::vector<Value<FpType> &> parameters() override {
+    std::vector<Value<FpType> &> params;
+    for (auto &l : layers_) {
+      for (auto &p : l.parameters()) {
+        params.emplace_back(p);
+      }
+    }
+    return params;
+  }
+
+  std::vector<Value<FpType> &> operator()(std::vector<Value<FpType> &> x) {
+    for (auto &l : layers_) {
+      x = l(x);
+    }
+    return x;
+  }
+
+private:
+  std::vector<std::size_t> sizes_;
+  std::vector<Layer<FpType>> layers_;
+}; // class MLP

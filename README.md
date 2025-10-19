@@ -1,2 +1,2 @@
 # tealight
-Tiny autograd library
+Tiny autograd library. Python interface nanobinded to C++ backend. Based on karpathy/micrograd.

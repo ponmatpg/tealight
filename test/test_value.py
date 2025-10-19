@@ -3,9 +3,11 @@ from src.libvalue import Value
 def test_basic():
     x = Value(10)
     y = Value(5.0)
-    z = x + y  * y + x / y 
-    print(f"z={z.describe()}")
-    print(f"z={z.describe()}")
+    z = x + y * y + x * y + x ** y
+    z.backward()
+    print(f"{z.describe()}")
+    print(f"{x.describe()}")
+    print(f"{y.describe()}")
 
 if __name__ == "__main__":
     test_basic()

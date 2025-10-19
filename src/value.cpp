@@ -4,6 +4,7 @@
 #include <iostream>
 #include <nanobind/operators.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
 #include <ostream>
 #include <ranges>
 #include <set>
@@ -211,6 +212,7 @@ public:
     for (auto &n : neurons_) {
       out.push_back(&(*n)(x));
     }
+    return out;
   }
 
 private:
@@ -305,7 +307,8 @@ NB_MODULE(libvalue, m) {
       .def("backward", &ValueType::backward);
 
   nb::class_<NeuronType>(m, "Neuron")
-      .def(nb::init<int, bool>())
+      .def(nb::init<int, bool>(), nb::arg("input_size"),
+           nb::arg("has_activation") = false)
       .def(
           "__call__",
           [](NeuronType &self, std::vector<ValueType *> x) -> ValueType & {
@@ -317,6 +320,8 @@ NB_MODULE(libvalue, m) {
 
   nb::class_<LayerType>(m, "Layer")
       .def(nb::init<int, int, bool>())
+      .def(nb::init<int, int, bool>(), nb::arg("input_size"),
+           nb::arg("output_size"), nb::arg("has_activation") = false)
       .def(
           "__call__",
           [](LayerType &self, std::vector<ValueType *> x)
@@ -325,8 +330,9 @@ NB_MODULE(libvalue, m) {
       .def("zero_grad", &LayerType::zero_grad)
       .def("parameters", &LayerType::parameters, nb::rv_policy::reference);
 
-  nb::class_<MLPType>(m, "Layer")
-      .def(nb::init<std::size_t, std::vector<std::size_t>>())
+  nb::class_<MLPType>(m, "MLP")
+      .def(nb::init<std::size_t, std::vector<std::size_t>>(),
+           nb::arg("input_size"), nb::arg("output_sizes"))
       .def(
           "__call__",
           [](MLPType &self, std::vector<ValueType *> x)

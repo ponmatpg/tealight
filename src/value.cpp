@@ -23,6 +23,7 @@ public:
   Value(Value &other) = delete;
 
   FpType grad() const { return grad_; }
+  void step(FpType learning_rate) { value_ -= learning_rate * grad_; }
 
   void zero_grad() { grad_ = 0; }
 
@@ -36,10 +37,7 @@ public:
   // mathematical operators
   Value &operator+(Value &other) {
     Value *out = new Value(this->value_ + other.value_, {this, &other});
-    std::cout << "operator+ creating node " << out << " from " << this << " "
-              << &other << std::endl;
     out->backward_ = [this, &other, out]() {
-      std::cout << "updating sum gradient on " << out << std::endl;
       this->grad_ += out->grad_;
       other.grad_ += out->grad_;
     };
@@ -60,11 +58,8 @@ public:
 
   Value &operator*(Value &other) {
     Value *out = new Value(this->value_ * other.value_, {this, &other});
-    std::cout << "operator* creating node " << out << " from " << this << " "
-              << &other << std::endl;
 
     out->backward_ = [this, &other, out]() {
-      std::cout << "updating product gradient on " << out << std::endl;
       this->grad_ += out->grad_ * other.value_;
       other.grad_ += out->grad_ * this->value_;
     };
@@ -121,12 +116,6 @@ public:
       }
     };
     build_topo(this);
-
-    std::cout << "topo_sorted: ";
-    for (auto v : std::views::reverse(topo_sorted)) {
-      std::cout << v << " ";
-    }
-    std::cout << std::endl;
 
     grad_ = 1;
     for (auto v : std::views::reverse(topo_sorted)) {
@@ -323,6 +312,7 @@ NB_MODULE(libvalue, m) {
           },
           nb::rv_policy::reference)
       .def("grad", &ValueType::grad)
+      .def("step", &ValueType::step)
       .def("describe", &ValueType::describe)
       .def("__str__", &ValueType::describe)
       .def("__repr__", &ValueType::describe)

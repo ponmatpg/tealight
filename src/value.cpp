@@ -128,11 +128,145 @@ private:
   std::vector<Value<FpType> *> children_;
 };
 
+template <typename FpType = double> class Module {
+public:
+  Module() = default;
+  Module(Module<FpType> &other) = delete;
+
+  void zero_grad() {
+    for (auto &p : parameters()) {
+      p->zero_grad();
+    }
+  }
+
+  virtual std::vector<Value<FpType> *> parameters() = 0;
+
+}; // class Module
+
+template <typename FpType = double> class Neuron final : public Module<FpType> {
+public:
+  Neuron(std::size_t input_size, bool has_activation = false)
+      : Module<FpType>(), input_size_(input_size),
+        has_activation_(has_activation) {
+    for (int i = 0; i < input_size_; ++i) {
+      Value<FpType> *w = new Value<FpType>(0.01);
+      weights_.push_back(w);
+    }
+    bias_ = new Value<FpType>(0);
+  };
+  Neuron(Neuron<FpType> &other) = delete;
+
+  std::vector<Value<FpType> *> parameters() override {
+    std::vector<Value<FpType> *> params;
+    for (auto &w : weights_) {
+      params.emplace_back(w);
+    }
+    params.emplace_back(bias_);
+    return params;
+  }
+
+  Value<FpType> &operator()(std::vector<Value<FpType> *> x) {
+    Value<FpType> &sum_ = *bias_;
+    for (int i = 0; i < x.size(); ++i) {
+      sum_ = sum_ + (*weights_[i]) * (*x[i]);
+    }
+
+    if (has_activation_) {
+      return sum_.relu();
+    } else {
+      return sum_;
+    }
+  }
+
+private:
+  std::size_t input_size_;
+  bool has_activation_;
+  std::vector<Value<FpType> *> weights_;
+  Value<FpType> *bias_{0};
+}; // class Neuron
+
+template <typename FpType = double> class Layer final : public Module<FpType> {
+public:
+  Layer(std::size_t input_size, std::size_t output_size, bool has_activation)
+      : Module<FpType>(), input_size_(input_size), output_size_(output_size) {
+    for (int i = 0; i < output_size; ++i) {
+      Neuron<FpType> *n = new Neuron<FpType>(input_size, has_activation);
+      neurons_.push_back(n);
+    }
+  };
+  Layer(Layer<FpType> &other) = delete;
+
+  std::vector<Value<FpType> *> parameters() override {
+    std::vector<Value<FpType> *> params;
+    for (auto &n : neurons_) {
+      for (auto &p : n->parameters()) {
+        params.emplace_back(p);
+      }
+    }
+    return params;
+  }
+
+  std::vector<Value<FpType> *> operator()(std::vector<Value<FpType> *> x) {
+    std::vector<Value<FpType> *> out;
+    for (auto &n : neurons_) {
+      out.push_back(&(*n)(x));
+    }
+  }
+
+private:
+  std::size_t input_size_;
+  std::size_t output_size_;
+  std::vector<Neuron<FpType> *> neurons_;
+}; // class Layer
+
+template <typename FpType = double> class MLP final : public Module<FpType> {
+public:
+  MLP(std::size_t input_size, std::vector<std::size_t> output_sizes)
+      : Module<FpType>() {
+    sizes_.push_back(input_size);
+    for (auto sz : output_sizes) {
+      sizes_.push_back(sz);
+    }
+
+    for (int i = 0; i < sizes_.size() - 1; ++i) {
+      bool has_activation = (i + 1) == sizes_.size() - 1;
+      Layer<FpType> *layer =
+          new Layer<FpType>(sizes_[i], sizes_[i + 1], has_activation);
+      layers_.push_back(layer);
+    }
+  };
+  MLP(MLP<FpType> &other) = delete;
+
+  std::vector<Value<FpType> *> parameters() override {
+    std::vector<Value<FpType> *> params;
+    for (auto &l : layers_) {
+      for (auto &p : l->parameters()) {
+        params.push_back(p);
+      }
+    }
+    return params;
+  }
+
+  std::vector<Value<FpType> *> operator()(std::vector<Value<FpType> *> x) {
+    for (auto &l : layers_) {
+      x = (*l)(x);
+    }
+    return x;
+  }
+
+private:
+  std::vector<std::size_t> sizes_;
+  std::vector<Layer<FpType> *> layers_;
+}; // class MLP
+
 NB_MODULE(libvalue, m) {
   m.doc() = "Differentiable scalar value";
 
   using FLOAT_T = double;
   using ValueType = Value<FLOAT_T>;
+  using NeuronType = Neuron<FLOAT_T>;
+  using LayerType = Layer<FLOAT_T>;
+  using MLPType = MLP<FLOAT_T>;
 
   nb::class_<ValueType>(m, "Value")
       .def(nb::init<FLOAT_T>())
@@ -169,131 +303,35 @@ NB_MODULE(libvalue, m) {
       .def("grad", &ValueType::grad)
       .def("describe", &ValueType::describe)
       .def("backward", &ValueType::backward);
+
+  nb::class_<NeuronType>(m, "Neuron")
+      .def(nb::init<int, bool>())
+      .def(
+          "__call__",
+          [](NeuronType &self, std::vector<ValueType *> x) -> ValueType & {
+            return self(x);
+          },
+          nb::rv_policy::reference)
+      .def("zero_grad", &NeuronType::zero_grad)
+      .def("parameters", &NeuronType::parameters, nb::rv_policy::reference);
+
+  nb::class_<LayerType>(m, "Layer")
+      .def(nb::init<int, int, bool>())
+      .def(
+          "__call__",
+          [](LayerType &self, std::vector<ValueType *> x)
+              -> std::vector<ValueType *> { return self(x); },
+          nb::rv_policy::reference)
+      .def("zero_grad", &LayerType::zero_grad)
+      .def("parameters", &LayerType::parameters, nb::rv_policy::reference);
+
+  nb::class_<MLPType>(m, "Layer")
+      .def(nb::init<std::size_t, std::vector<std::size_t>>())
+      .def(
+          "__call__",
+          [](MLPType &self, std::vector<ValueType *> x)
+              -> std::vector<ValueType *> { return self(x); },
+          nb::rv_policy::reference)
+      .def("zero_grad", &MLPType::zero_grad)
+      .def("parameters", &MLPType::parameters, nb::rv_policy::reference);
 }
-
-template <typename FpType = double> class Module {
-public:
-  Module() = default;
-  Module(Module<FpType> &other) = delete;
-
-  void zero_grad() {
-    for (auto &p : parameters()) {
-      p.zero_grad();
-    }
-  }
-
-  virtual std::vector<Value<FpType> &> parameters() = 0;
-
-}; // class Module
-
-template <typename FpType = double> class Neuron : public Module<FpType> {
-public:
-  Neuron(std::size_t input_size, bool has_activation = false)
-      : Module<FpType>(), input_size_(input_size),
-        has_activation_(has_activation) {
-    for (int i = 0; i < input_size_; ++i) {
-      weights_.emplace_back(0.01);
-    }
-    bias_ = Value<FpType>(0);
-  };
-  Neuron(Neuron<FpType> &other) = delete;
-
-  std::vector<Value<FpType> &> parameters() override {
-    std::vector<Value<FpType> &> params;
-    for (auto &w : weights_) {
-      params.emplace_back(w);
-    }
-    params.emplace_back(bias_);
-    return params;
-  }
-
-  Value<FpType> &operator()(std::vector<Value<FpType> &> x) {
-    Value<FpType> &sum_ = x[0];
-    for (int i = 1; i < x.size(); ++i) {
-      sum_ = sum_ + x[i];
-    }
-
-    if (has_activation_) {
-      return sum_.relu();
-    } else {
-      return sum_;
-    }
-  }
-
-private:
-  std::size_t input_size_;
-  bool has_activation_;
-  std::vector<Value<FpType>> weights_;
-  Value<FpType> bias_;
-}; // class Neuron
-
-template <typename FpType = double> class Layer : public Module<FpType> {
-public:
-  Layer(std::size_t input_size, std::size_t output_size)
-      : Module<FpType>(), input_size_(input_size), output_size_(output_size) {
-    for (int i = 0; i < output_size; ++i) {
-      neurons_.emplace_back(input_size);
-    }
-  };
-  Layer(Layer<FpType> &other) = delete;
-
-  std::vector<Value<FpType> &> parameters() override {
-    std::vector<Value<FpType> &> params;
-    for (auto &n : neurons_) {
-      for (auto &p : n.parameters()) {
-        params.emplace_back(p);
-      }
-    }
-    return params;
-  }
-
-  std::vector<Value<FpType> &> operator()(std::vector<Value<FpType> &> x) {
-    std::vector<Value<FpType> &> out;
-    for (auto &n : neurons_) {
-      out.emplace_back(n(x));
-    }
-  }
-
-private:
-  std::size_t input_size_;
-  std::size_t output_size_;
-  std::vector<Neuron<FpType>> neurons_;
-}; // class Layer
-
-template <typename FpType = double> class MLP : public Module<FpType> {
-public:
-  MLP(std::size_t input_size, std::vector<std::size_t> output_sizes)
-      : Module<FpType>() {
-    sizes_.push_back(input_size);
-    for (auto sz : output_sizes) {
-      sizes_.push_back(sz);
-    }
-
-    for (int i = 0; i < sizes_.size() - 1; ++i) {
-      bool has_activation = (i + 1) == sizes_.size() - 1;
-      layers_.emplace_back(sizes_[i], sizes_[i + 1], has_activation);
-    }
-  };
-  MLP(Layer<FpType> &other) = delete;
-
-  std::vector<Value<FpType> &> parameters() override {
-    std::vector<Value<FpType> &> params;
-    for (auto &l : layers_) {
-      for (auto &p : l.parameters()) {
-        params.emplace_back(p);
-      }
-    }
-    return params;
-  }
-
-  std::vector<Value<FpType> &> operator()(std::vector<Value<FpType> &> x) {
-    for (auto &l : layers_) {
-      x = l(x);
-    }
-    return x;
-  }
-
-private:
-  std::vector<std::size_t> sizes_;
-  std::vector<Layer<FpType>> layers_;
-}; // class MLP

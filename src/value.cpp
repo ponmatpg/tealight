@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cstddef>
 #include <functional>
 #include <iostream>
 #include <nanobind/operators.h>
@@ -176,23 +177,52 @@ public:
   Module(Module<FpType> &other) = delete;
 
   void zero_grad() {
-    for (auto &p : parameters_) {
+    for (auto &p : parameters()) {
       p.zero_grad();
     }
   }
 
-private:
-  std::vector<Value<FpType>> parameters_;
+  virtual std::vector<Value<FpType> &> parameters() = 0;
+
 }; // class Module
 
-/*
 template <typename FpType = double> class Neuron : public Module<FpType> {
 public:
-  Neuron(std::size_t input_size) : Module<FpType>() {};
+  Neuron(std::size_t input_size, bool has_activation)
+      : Module<FpType>(), input_size_(input_size),
+        has_activation_(has_activation) {
+    for (int i = 0; i < input_size_; ++i) {
+      weights_.emplace_back(0.01);
+    }
+    bias_ = Value<FpType>(0);
+  };
   Neuron(Neuron<FpType> &other) = delete;
 
+  std::vector<Value<FpType> &> parameters() override {
+    std::vector<Value<FpType> &> params;
+    for (auto &w : weights_) {
+      params.emplace_back(w);
+    }
+    params.emplace_back(bias_);
+    return params;
+  }
+
+  Value<FpType> &operator()(std::vector<Value<FpType> &> x) {
+    Value<FpType> &sum_ = x[0];
+    for (int i = 1; i < x.size(); ++i) {
+      sum_ = sum_ + x[i];
+    }
+
+    if (has_activation_) {
+      return sum_.relu();
+    } else {
+      return sum_;
+    }
+  }
+
 private:
+  std::size_t input_size_;
+  bool has_activation_{false};
   std::vector<Value<FpType>> weights_;
-  Value<FpType> bias;
+  Value<FpType> bias_;
 }; // class Neuron
-*/
